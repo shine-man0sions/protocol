@@ -6,14 +6,14 @@ import random
 import base64
 import hashlib
 
-# 命令行参数解析器
 from argparse import ArgumentParser
+from mbedtls import pk
+from mbedtls.cipher import AES
+
 from Crypto.Random import get_random_bytes
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_OAEP
 
-from mbedtls import pk
-from mbedtls.cipher import AES
 
 RECV_LEN = 4 * 1024
 
@@ -28,7 +28,6 @@ def parse_args():
     args.add_argument('--port', default=5005, type=int)
     args.add_argument('--client', default="")
     return args.parse_args()
-
 
 
 def read_json_to_dict(filename):
@@ -84,31 +83,6 @@ def format_key(client):
     return f"{client}_CA_key"
 
 
-# 5. this part is for authenticate itself to other clients
-# RSA signature
-def RSA_sign(key, message):
-    """return  base64  sign result, in order to use in json format"""
-    rsa = pk.RSA.from_PEM(key)
-    if isinstance(message, bytes):
-        sig = rsa.sign(message, "sha256")
-    else:
-        sig = rsa.sign(dict_to_bytes(message), "sha256")
-    return bytes_to_base64(sig)
-
-
-# RSA verify  signature
-def RSA_verify(public_key, message, sig_base64):
-    """
-    Arguments:
-        public_key -- [PEM format]
-        message -- [dict]
-        sig_base64 -- [base64 str]
-    """
-    rsa = pk.RSA.from_PEM(public_key)
-    sig = base64_to_bytes(sig_base64)
-    return rsa.verify(dict_to_bytes(message), sig, "sha256")
-
-
 def generate_client():
     ecdh_key = pk.ECC(pk.Curve.CURVE25519)
     ecdh_key.generate()
@@ -155,23 +129,50 @@ def AES_decrpted(key, encryted_message):
     return aes.decrypt(encrpted_data, verify)
 
 
-def AES_session_key_temporary():
-    session_key = get_random_bytes(16)
-    return session_key
+# confidentiality
+def confidentiality(key, message):
+    """return  base64  encrpted result, in order to use in json format"""
+    aes = AES.new(key, AES.Mode.GCM, key[:16], ad=key[16:])
+    encryted_data, verify = aes.encrypt(dict_to_bytes(message))
+    return {
+        "encrpted_data": bytes_to_base64(encryted_data),
+        "verify": bytes_to_base64(verify)
+    }
 
 
-def RSA_encrypt(public_key, message):
-    """使用RSA公钥对消息进行加密"""
+# RSA signature
+def RSA_sign(key, message):
+    """return  base64  sign result, in order to use in json format"""
+    rsa = pk.RSA.from_PEM(key)
+    sig = rsa.sign(dict_to_bytes(message), "sha256")
+    return bytes_to_base64(sig)
 
-    public_key = RSA.importKey(public_key)
-    cipher = PKCS1_OAEP.new(public_key)
-    ciphertext = cipher.encrypt(message)
-    return bytes_to_base64(ciphertext)
 
-def RSA_decrypt(private_key, ciphertext):
-    """使用RSA私钥对密文进行解密"""
+# RSA verify signature
+def RSA_verify(public_key, message, sig_base64):
+    """
+    Arguments:
+        public_key -- [PEM format]
+        message -- [dict]
+        sig_base64 -- [base64 str]
+    """
+    rsa = pk.RSA.from_PEM(public_key)
+    sig = base64_to_bytes(sig_base64)
+    return rsa.verify(dict_to_bytes(message), sig, "sha256")
 
-    private_key = RSA.importKey(private_key)
-    cipher = PKCS1_OAEP.new(private_key)
-    decrypted_message = cipher.decrypt(base64_to_bytes(ciphertext))
-    return decrypted_message
+
+# def RSA_encrypt(public_key, message):
+#     """使用RSA公钥对消息进行加密"""
+
+#     public_key = RSA.importKey(public_key)
+#     cipher = PKCS1_OAEP.new(public_key)
+#     ciphertext = cipher.encrypt(message)
+#     print(",,,,----000<")
+#     return bytes_to_base64(ciphertext)
+
+
+# def RSA_decrypt(private_key, ciphertext):
+#     """使用RSA私钥对密文进行解密"""
+#     rsa = pk.RSA.from_PEM(private_key)
+#     plaintext = rsa.decrypt(ciphertext)
+#     return plaintext.decode()

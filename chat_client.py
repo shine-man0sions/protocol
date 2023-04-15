@@ -23,7 +23,8 @@ class ChatClient:
         self.all_ca_dict = read_json_to_dict(config_file)
         self.public_ca_name = f"{client}_CA_public_key"
         self.ca_name = f"{client}_CA_key"
-        self.client_public_key = self.all_ca_dict.get("public_key").get(self.public_ca_name)
+        self.client_public_key = self.all_ca_dict.get(
+            "public_key").get(self.public_ca_name)
         self.client_key = self.all_ca_dict.get("key").get(self.ca_name)
         self.sign_name = f"{client}_CA_key_sign"
         self.sign_key = self.all_ca_dict.get("key_sign").get(self.sign_name)
@@ -32,12 +33,20 @@ class ChatClient:
         self.key_dict = {
             self.client: bytes.fromhex(generate_random_hash256())
         }
+        self.key_dict_temporary = {
+            self.client: AES_session_key_temporary()
+        }
         self.ECDHClient, self.ecdh_client_key_b64 = generate_client()
         self.ECDHServer, self.ecdh_server_key_b64 = generate_server()
 
         # init when client does not know others client public key
         # can request from server to get the other client public key
         self.public_ca_dict = {}
+
+    # 3.
+    # this is for each entities such as A, B, C do not know each other's public key before the first time
+    # they communicate with each other, request for other's public key from server S
+    # this part is for require 3 in project
 
     def request_for_other_public_key(self, sock, other_client):
         send_msg = {
@@ -57,8 +66,6 @@ class ChatClient:
         if msg_res_dict.get("reply_action") == "response_ca_public_key":
             return msg_res_dict.get("content")
 
-    # 1. A, B, C Never communicate directly  
-    # 3. chat server s has access to all public keys of all clients
     def login(self, sock):
         print_info(f"client {self.client} logining")
         login_msg = {
@@ -86,10 +93,9 @@ class ChatClient:
             print_info(login_res_dict.get("content"))
         # sock.close()
 
+    # 6. this part include A, B, C send message to each other
+    # 6. including RSA signature to authenticate the message, Integrity check, and confidentiality
 
-    # 4 and 6. each step in establishing the session 
-    # provide an authenticated and integrity check
-    # using source_signed = RSA_sign(self.client_key, msg_dict) 
     def handle_send_msg(self, sock, send_to, msg_type, message):
         msg_dict = {
             "type": msg_type,
@@ -102,23 +108,18 @@ class ChatClient:
                 "send_source": self.client,
                 "send_to": send_to,
                 "source_signed": RSA_sign(self.client_key, msg_dict),
-                "msg": msg_dict,
-            },
+                "msg": msg_dict
+            }
         }
         print_info(f"client: {self.client} to {send_to}")
-        send_public_key = (self.request_for_other_public_key(sock, send_to))["ca_value"]
         send_msg_byte = dict_to_bytes(send_msg)
-        print(".......---->", send_public_key, send_msg_byte)
-        encrypted_msg = RSA_encrypt(send_public_key, send_msg_byte)
-        sock.sendall(encrypted_msg)
+        sock.sendall(send_msg_byte)
         time.sleep(3)
 
     def handle_recv_msg(self, sock):
         recv_msg = sock.recv(RECV_LEN)
-        recv_msg_decrypt = RSA_decrypt(self.client_key, recv_msg)
-        recv_msg_dict = bytes_to_dict(recv_msg_decrypt)
+        recv_msg_dict = bytes_to_dict(recv_msg)
         source = recv_msg_dict.get("content").get("send_source")
-        print("/////0000---------000000-->",source)
         print_info(f"source_public_ca_name {source}")
         source_public_ca_name = format_public_key(source)
         source_public_ca = self.public_ca_dict.get(source_public_ca_name)
@@ -127,7 +128,8 @@ class ChatClient:
             self.public_ca_dict[resp_pkey["ca_name"]] = resp_pkey["ca_value"]
 
             source_public_ca = self.public_ca_dict.get(source_public_ca_name)
-            print_info(f"get {source} public_key from S \n {source_public_ca }")
+            print_info(
+                f"get {source} public_key from S \n {source_public_ca }")
             time.sleep(3)
 
         source_signed_b64 = recv_msg_dict.get("content").get("source_signed")
@@ -135,17 +137,21 @@ class ChatClient:
         if RSA_verify(source_public_ca, message, source_signed_b64):
             print_info(f"message from source {source} signed OK!!!")
             return recv_msg_dict
-        print_info(f"message from {self.client} signed failed\n  please use a correct key to signed")
+        print_info(
+            f"message from {self.client} signed failed\n  please use a correct key to signed")
         return None
 
     def exchange_key_random(self, ID, sock, ECDHClient, ecdh_client_key_b64, key_random):
         print_info(f"ecdh_client_key_b64 to {ID}")
-        self.handle_send_msg(sock, ID, "ECDHClient_public_key", ecdh_client_key_b64)
+        self.handle_send_msg(
+            sock, ID, "ECDHClient_public_key", ecdh_client_key_b64)
         print_info(f"ecdh_client_key_b64 send to {ID} finished!")
 
         # revice the ECDHServer_public_key from other
         recv_B_ECDHServer = self.handle_recv_msg(sock)
-        # calculate shared_key between two client such as A and B
+
+        # calculate a temporary shared session key by ECDH for A and B, B and C, C and A
+        # to protect the random number generated by A, B, and C
         b_ecdh_public_key = recv_B_ECDHServer.get("content").get("msg")
         print_info(f"{ID}_ecdh_public_key: \n{b_ecdh_public_key}")
         ECDHClient.import_SKE(base64_to_bytes(b_ecdh_public_key.get("value")))
@@ -153,23 +159,34 @@ class ChatClient:
         print_info(f"shared_key:\n{shared_key}")
 
         # send Key_random to B use AES encrpted by A_B_shared_key
-        Key_random_encryted = AES_encrpted(shared_key.to_bytes(32, "big"), key_random)
-        self.handle_send_msg(sock, ID, "AES_encryption_Key_random", Key_random_encryted)
+        Key_random_encryted = AES_encrpted(
+            shared_key.to_bytes(32, "big"), key_random)
+        self.handle_send_msg(
+            sock, ID, "AES_encryption_Key_random", Key_random_encryted)
 
-    def exchange_Key_pre(self, sock, sourceID, targetID1, targetID2):
+    # 6. in this part exchange_key_random function is used to exchange the random number generated by A, B,
+    # and C, and each entity send the random number to other entity such as A send the random number to B, B
+    # send the random number to C, C send the random number to A
+    # this part provide the confidentiality and integrity and authentication check
+    # A , B and C use the ECDH to generate a temporary shared session key to protect the random number generated by A, B, and C
+
+    def exchange_message_init(self, sock, sourceID, targetID1, targetID2):
         if self.client == sourceID:
             # exchange srouce to other
             time.sleep(5)
-            print_info(" sleep 20 s waiting for  starting exchange_Key_pre ")
-            # generate A B C session Key random Number
+            print_info(
+                " sleep 20 s waiting for  starting exchange_message_init ")
+            # generate A B C session Key random
             key_random = self.key_dict.get(self.client)
-            print("/////..............", key_random)
-            self.exchange_key_random(targetID1, sock, self.ECDHClient, self.ecdh_client_key_b64, key_random)
+            print_info(f"key_random: {key_random} \n {key_random.hex()}")
+            self.exchange_key_random(
+                targetID1, sock, self.ECDHClient, self.ecdh_client_key_b64, key_random)
 
             # ==============================================
             # exchange source to other
 
-            self.exchange_key_random(targetID2, sock, self.ECDHClient, self.ecdh_client_key_b64, key_random)
+            self.exchange_key_random(
+                targetID2, sock, self.ECDHClient, self.ecdh_client_key_b64, key_random)
             print_info(
                 f"client: {self.client} send {key_random} \n {key_random.hex()} \n OK OK OK\n OKOKOKOK")
 
@@ -180,27 +197,32 @@ class ChatClient:
 
             if client_ecdh_dict.get("action") == "ECDHClient_public_key":
                 A_ECDH_client_key = client_ecdh_dict.get("content").get("msg")
-                self.ECDHServer.import_CKE(base64_to_bytes(A_ECDH_client_key.get("value")))
+                self.ECDHServer.import_CKE(
+                    base64_to_bytes(A_ECDH_client_key.get("value")))
                 shared_key_client = self.ECDHServer.generate_secret()
                 # reply ECDHServer_public_key to sourceID
                 print_info(f"reply ECDHServer_public_key to {sourceID}")
-                self.handle_send_msg(sock, sourceID, "ECDHServer_public_key", self.ecdh_server_key_b64)
+                self.handle_send_msg(
+                    sock, sourceID, "ECDHServer_public_key", self.ecdh_server_key_b64)
 
             client_ecdh_dict = self.handle_recv_msg(sock)
             if client_ecdh_dict.get("action") == "AES_encryption_Key_random":
-                encrpted_key_random_message = client_ecdh_dict.get("content").get("msg").get("value")
-                send_source = client_ecdh_dict.get("content").get("send_source")
-                key_random = AES_decrpted(shared_key_client.to_bytes(32, "big"), encrpted_key_random_message)
+                encrpted_key_random_message = client_ecdh_dict.get(
+                    "content").get("msg").get("value")
+                send_source = client_ecdh_dict.get(
+                    "content").get("send_source")
+                key_random = AES_decrpted(shared_key_client.to_bytes(
+                    32, "big"), encrpted_key_random_message)
                 self.key_dict[send_source] = key_random
 
                 print_info(
                     f"client: {self.client} Get {send_source} key_random: {key_random} \n {key_random.hex()} \n  OK OK OK\n OKOKOKOK")
 
-                # combine the key_random to get Kabc
                 if len(self.key_dict) == 3:
-                    self.Kabc = combine_hash_values(list(self.key_dict.values()))
+                    self.Kabc = combine_hash_values(
+                        list(self.key_dict.values()))
                     print_info(
-                        f"==========------->-----====== {self.Kabc} is \n {self.Kabc.hex()} \n  OK OK OK\n OKOKOKOK")
+                        f"{self.Kabc} is \n {self.Kabc.hex()} \n  OK OK OK\n OKOKOKOK")
 
     def handle_server(self, sock):
 
@@ -210,18 +232,20 @@ class ChatClient:
 
         # second, exchange session Kabc
         if self.Kabc is None:
-            self.exchange_Key_pre(sock, "A", "B", "C")
+            self.exchange_message_init(sock, "A", "B", "C")
             time.sleep(10)
-            self.exchange_Key_pre(sock, "B", "A", "C")
+            self.exchange_message_init(sock, "B", "A", "C")
             time.sleep(10)
-            self.exchange_Key_pre(sock, "C", "A", "B")
+            self.exchange_message_init(sock, "C", "A", "B")
 
         else:
             time.sleep(30)
-            print_info(f"client: {self.client} Waiting to Send and recv message")
+            print_info(
+                f"client: {self.client} Waiting to Send and recv message")
             self.abc_message_send_recv_test(sock)
 
     def abc_message_send_recv_test(self, sock):
+        print("self---------->", self)
         # B send message << hello A >> to A
         if self.client == "B":
             self.handle_send_msg(sock, "A", "AES_encryption_message",
@@ -259,6 +283,7 @@ class ChatClient:
 if __name__ == '__main__':
     args = parse_args()
     print("ChatClinet args: ", args)
-    chat_client = ChatClient(host=args.host, port=args.port, client=args.client)
+    chat_client = ChatClient(
+        host=args.host, port=args.port, client=args.client)
     # start tcp server
     chat_client.start_client()

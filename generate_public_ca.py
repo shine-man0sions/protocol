@@ -5,6 +5,11 @@ from mbedtls import pk
 from utils import *
 
 
+
+# 2. Generate the public key and private key of each entity.
+# Each entity has a public key and a private key.
+# The public key is used to verify the signature of the message.
+
 def generate_key_by_RSA():
     rsa = pk.RSA()
     rsa.generate()
@@ -14,9 +19,6 @@ def generate_key_by_RSA():
     key_sign = RSA_sign(key, public_key)
     return public_key, key, key_sign
 
-# 2. Generate the public key and private key of each entity.
-# Each entity has a public key and a private key.
-# The public key is used to verify the signature of the message.
 def write_to_config(filename='config.json'):
     S = generate_key_by_RSA()
     A = generate_key_by_RSA()
