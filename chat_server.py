@@ -26,7 +26,8 @@ class ChatServer(socketserver.BaseRequestHandler):
         self.token_dict = {}  # 添加token_dict用于保存Token和过期时间
         self.public_ca_name = "S_CA_public_key"
         self.ca_name = "S_CA_key"
-        self.client_public_key = self.all_ca_dict.get("public_key").get(self.public_ca_name)
+        self.client_public_key = self.all_ca_dict.get(
+            "public_key").get(self.public_ca_name)
         self.client_key = self.all_ca_dict.get("key").get(self.ca_name)
 
     # 处理客户端的发送过来的数据
@@ -49,7 +50,8 @@ class ChatServer(socketserver.BaseRequestHandler):
                 self.handle_message(conn, result)
             else:
                 # 通过rsa解密算法，使用S服务器的私钥解密出client与临时session——key
-                plain_text = bytes_to_dict(rsa_decrypt(self.client_key, message["key"]))
+                plain_text = bytes_to_dict(
+                    rsa_decrypt(self.client_key, message["key"]))
 
                 # 构造消息数据，用于验证数字签名
                 client = plain_text["client"]
@@ -60,8 +62,10 @@ class ChatServer(socketserver.BaseRequestHandler):
                 hash_result_s = message["sign"]
 
                 # 获得客户端的公钥，用来验证数字签名
-                public_key = self.all_ca_dict.get("public_key").get(f"{client}_CA_public_key")
-                print(f" step2.2 ===> get public key to verify signature =======>>>  {public_key}")
+                public_key = self.all_ca_dict.get(
+                    "public_key").get(f"{client}_CA_public_key")
+                print(
+                    f" step2.2 ===> get public key to verify signature =======>>>  {public_key}")
 
                 # 验证数字签名，compare 为True为验证成功，False为验证失败
                 compare = RSA_verify(public_key, hash_result, hash_result_s)
@@ -69,20 +73,23 @@ class ChatServer(socketserver.BaseRequestHandler):
 
                 if compare:
                     # 如果验证成功，则拿session_key AES算法去解密原始消息，获得明文
-                    plain_text_aes = bytes_to_dict(AES_decryptedFunc(session_key, message["cipher"]))
+                    plain_text_aes = bytes_to_dict(
+                        AES_decryptedFunc(session_key, message["cipher"]))
                     print(hash_result, compare, plain_text_aes)
                     print(
                         f" step2.4 ===> get plain text from cipher =======>>>  {hash_result}, {compare}, {plain_text_aes}")
 
                     # save client info  then Forward to other client
-                    send_source = plain_text_aes.get("content").get("send_source")
+                    send_source = plain_text_aes.get(
+                        "content").get("send_source")
 
                     self.sock_dict[send_source] = conn
 
                     if plain_text_aes["action"] == "login":
                         self.handle_login(conn, plain_text_aes["content"])
                     elif plain_text_aes["action"] == "request_ca_public_key":
-                        self.response_public_key(conn, plain_text_aes["content"])
+                        self.response_public_key(
+                            conn, plain_text_aes["content"])
                     else:
                         self.response_ECDH(conn, plain_text_aes["content"])
         except Exception as e:
@@ -162,10 +169,12 @@ class ChatServer(socketserver.BaseRequestHandler):
         public_key = private_key.get_public()
 
         # 将私钥导出为字节串
-        private_key_bytes = private_key.export_key(format=pk.MBEDTLS_ECP_PF_UNCOMPRESSED)
+        private_key_bytes = private_key.export_key(
+            format=pk.MBEDTLS_ECP_PF_UNCOMPRESSED)
 
         # 将公钥导出为字节串
-        public_key_bytes = public_key.export_key(format=pk.MBEDTLS_ECP_PF_UNCOMPRESSED)
+        public_key_bytes = public_key.export_key(
+            format=pk.MBEDTLS_ECP_PF_UNCOMPRESSED)
 
         # 使用公钥和私钥生成会话密钥
         session_key = ECDH.generate_shared(private_key, public_key)
@@ -183,7 +192,8 @@ class ChatServer(socketserver.BaseRequestHandler):
         send_source = result.get("optional").get("send_source")
         send_to = result.get("optional").get("send_to")
         send_to_sock = self.sock_dict.get(send_to)
-        print(f" step 6.1 {send_source} transfer unchanged message to other Client {send_to_sock}")
+        print(
+            f" step 6.1 {send_source} transfer unchanged message to other Client {send_to_sock}")
         self.sock_reply_msg_dict[send_to_sock].put((pickle.dumps(result)))
 
     # 启动一个服务器
@@ -202,7 +212,8 @@ class ChatServer(socketserver.BaseRequestHandler):
             outputs = []
             # loop the writable
             while True:
-                readable, writeable, exceptional = select.select(inputs, outputs, [])
+                readable, writeable, exceptional = select.select(
+                    inputs, outputs, [])
                 for r in readable:
                     # Represents a new connection
                     if r is server:

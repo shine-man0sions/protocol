@@ -229,8 +229,6 @@ def AES_decrpted(key, encryted_message):
     return aes.decrypt(encrpted_data, verify)
 
 
-import pickle
-
 def transmit_encrypt_func(client, session_key, client_key, public_cas, login_message, optional_var=None):
     send_msg_key = {
         "client": client,
@@ -269,4 +267,3 @@ def transmit_encrypt_func(client, session_key, client_key, public_cas, login_mes
     print(f" Step2,3,4,5 common method ===> generate AES cipher, digital signature, public key cipher encrypted by "
           f"RSA =======>>>  {serialized_message}")
     return serialized_message
-
