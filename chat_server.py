@@ -143,6 +143,7 @@ class ChatServer(socketserver.BaseRequestHandler):
         reply_data = dict_to_bytes(reply_dict)
         self.sock_reply_msg_dict[conn].put(reply_data)
         # time.sleep(3)
+        return None
 
     # A， B， C 向S请求其他设备的公钥，S返回响应数据
     def response_public_key(self, conn, data):
@@ -158,8 +159,9 @@ class ChatServer(socketserver.BaseRequestHandler):
         }
         self.sock_reply_msg_dict[conn].put(dict_to_bytes(response_msg))
         # time.sleep(3)
+        return None
 
-    def response_ECDH(self, conn, data):
+    def response_ECDH(self, conn, data, ECDH=None):
 
         source_id = data["source_id"]
         send_to = data["send_to"]
@@ -195,6 +197,7 @@ class ChatServer(socketserver.BaseRequestHandler):
         print(
             f" step 6.1 {send_source} transfer unchanged message to other Client {send_to_sock}")
         self.sock_reply_msg_dict[send_to_sock].put((pickle.dumps(result)))
+        return None
 
     # 启动一个服务器
     def start_server(self):

@@ -65,6 +65,7 @@ class ChatClient:
 
         else:
             print_info(login_res_dict.get("content"))
+        return None
 
     # 向服务器请求其他的公钥，请求的过程中，使用自己的临时产生的一个session可以将整体的信息加密
     def request_for_other_public_key(self, sock, other_client):
@@ -135,6 +136,7 @@ class ChatClient:
         print(f"step 5 client:{self.client} to {send_to} send cipher message to other client =======>>>>>, {message}")
         sock.sendall(message)
         time.sleep(3)
+        return None
 
     def handle_recv_msg(self, sock):
         data = sock.recv(RECV_LEN)
@@ -176,16 +178,22 @@ class ChatClient:
 
             # 获取随机数NA，NB，NC，一会转发给其他客户端
             key_random = self.key_dict.get(self.client)
-            print(f"------====>>>>{key_random}")
+            print(f"step 9 send key_random ====>>>>{key_random}")
             self.handle_send_msg(sock, send_to1, key_random)
             self.handle_send_msg(sock, send_to2, key_random)
 
-            if len(self.key_dict) == 3:
-                self.Kabc = combine_hash_values(list(self.key_dict.values()))
-                print_info(f"step 13 =======>>>>>> get {self.Kabc} is \n {self.Kabc.hex()} \n  OK OK OK\n OKOKOKOK")
         else:
             time.sleep(5)
-            self.handle_recv_msg(sock)
+            result = self.handle_recv_msg(sock)
+            self.key_dict[source_id] = result.get("content").get("msg")
+
+            if len(self.key_dict) == 3:
+                key_list = self.key_dict.values()
+                print_info(f"step 12 =======>>>>>> get {self.key_dict[source_id]} \n  OK OK OK\n OKOKOKOK")
+
+                self.Kabc = combine_hash_values(list(key_list))
+                print_info(f"step 13 =======>>>>>> get {self.Kabc} is \n {self.Kabc.hex()} \n  OK OK OK\n OKOKOKOK")
+        return None
 
     def abc_message_send_recv_test(self, sock):
         if self.client == "B":
@@ -203,7 +211,7 @@ class ChatClient:
                 cipher: {AES_decrpted(self.Kabc, cipher.get("value"))}
                 """
                 print_info(format_out)
-                sock.close()
+        return None
 
     # 改写handle函数
     def handle_server(self, sock):
@@ -215,13 +223,12 @@ class ChatClient:
             self.exchange_message(sock, "A", "B", "C")
             self.exchange_message(sock, "B", "A", "C")
             self.exchange_message(sock, "C", "A", "B")
-
-
         else:
             time.sleep(30)
             print_info(
                 f"client: {self.client} Waiting to Send and recv message")
-            # self.abc_message_send_recv_test(sock)
+            self.abc_message_send_recv_test(sock)
+        return None
 
     # 开启客户端
     def start_client(self):
@@ -233,6 +240,7 @@ class ChatClient:
             while True:
                 self.handle_server(sock)
                 time.sleep(3)
+        return None
 
 
 # Press the green button in the gutter to run the script.
