@@ -198,8 +198,11 @@ def AES_encryptedFunc(key, message):
 
 
 def AES_decryptedFunc(key, data):
-    # 将密钥编码为 bytes
-    key = key.encode()
+    if isinstance(key, bytes):
+        pass
+    else:
+        # 将密钥编码为 bytes
+        key = key.encode()
 
     # 从字典中提取 ciphertext、nonce 和 tag，并进行 base64 解码
     ciphertext = base64_to_bytes(data["cipher"])
@@ -211,22 +214,6 @@ def AES_decryptedFunc(key, data):
     plaintext = cipher.decrypt_and_verify(ciphertext, tag)
 
     return plaintext
-
-
-def AES_encrpted(key, message):
-    aes = AES.new(key, AES.Mode.GCM, key[:16], ad=key[16:])
-    encryted_data, verify = aes.encrypt(message)
-    return {
-        "encrpted_data": bytes_to_base64(encryted_data),
-        "verify": bytes_to_base64(verify)
-    }
-
-
-def AES_decrpted(key, encryted_message):
-    aes = AES.new(key, AES.Mode.GCM, key[:16], ad=key[16:])
-    encrpted_data = base64_to_bytes(encryted_message.get("encrpted_data"))
-    verify = base64_to_bytes(encryted_message.get("verify"))
-    return aes.decrypt(encrpted_data, verify)
 
 
 def transmit_encrypt_func(client, session_key, client_key, public_cas, login_message, optional_var=None):

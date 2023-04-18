@@ -197,8 +197,8 @@ class ChatClient:
 
     def abc_message_send_recv_test(self, sock):
         if self.client == "B":
-            self.handle_send_msg(sock, "A", "AES_encryption_message", AES_encrpted(self.Kabc, b"hello A"))
-            self.handle_send_msg(sock, "C", "AES_encryption_message", AES_encrpted(self.Kabc, b"hello C"))
+            self.handle_send_msg(sock, "A", "AES_encryption_message", AES_decryptedFunc(self.Kabc, b"hello A"))
+            self.handle_send_msg(sock, "C", "AES_encryption_message", AES_decryptedFunc(self.Kabc, b"hello C"))
 
         else:
             recv_dict = self.handle_recv_msg(sock)
@@ -208,7 +208,7 @@ class ChatClient:
                 {self.client} recv cipher from {recv_dict.get("content").get("send_source")}
                 message: {cipher}
                 Kabc: {self.Kabc}
-                cipher: {AES_decrpted(self.Kabc, cipher.get("value"))}
+                cipher: {AES_decryptedFunc(self.Kabc, cipher.get("value"))}
                 """
                 print_info(format_out)
         return None
