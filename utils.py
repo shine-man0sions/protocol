@@ -78,13 +78,14 @@ def combine_hash_values(s):
     return bytes.fromhex(sha256.hexdigest())
 
 
-def double_hash(client, data):
-    hash_object = hashlib.sha256()
-    hash_result = bytes_to_base64(dict_to_bytes(client)) + data
-    hash_object.update(hash_result.encode('utf-8'))
-    hash_binary1 = hash_object.digest()
-    result = hash_binary1.hex()
-    return result
+def double_hash(obj):
+    if isinstance(obj, bytes) is not True:
+        obj_str = json.dumps(obj, sort_keys=True).encode('utf-8')
+    else:
+        obj_str = obj
+    sha256_hash = hashlib.sha256()
+    sha256_hash.update(obj_str)
+    return sha256_hash.hexdigest()
 
 
 def generate_token():
@@ -216,14 +217,13 @@ def AES_decryptedFunc(key, data):
     return plaintext
 
 
-def transmit_encrypt_func(client, session_key, client_key, public_cas, login_message, optional_var=None):
-    send_msg_key = {
-        "client": client,
-        "session_key": session_key
-    }
-    send_msg_key_encrypt = rsa_encrypt(public_cas, dict_to_bytes(send_msg_key))
+def transmit_encrypt_func(text, client_key, public_cas, login_message, optional_var=None):
+    if isinstance(text, bytes) is True:
+        send_msg_key_encrypt = rsa_encrypt(public_cas, text)
+    else:
+        send_msg_key_encrypt = rsa_encrypt(public_cas, dict_to_bytes(text))
     send_msg_hash = {
-        "hashKey": double_hash(client, session_key),
+        "hashKey": double_hash(text),
     }
     send_msg_byte = dict_to_bytes(login_message)
     send_msg_hash_byte = dict_to_bytes(send_msg_hash)
@@ -231,7 +231,7 @@ def transmit_encrypt_func(client, session_key, client_key, public_cas, login_mes
         if optional_var is not None:
             message = {
                 "message": {
-                    "cipher": AES_encryptedFunc(session_key, send_msg_byte),
+                    "cipher": send_msg_byte,
                     "sign": RSA_sign(client_key, send_msg_hash_byte),
                     "key": send_msg_key_encrypt,
                 },
@@ -240,7 +240,7 @@ def transmit_encrypt_func(client, session_key, client_key, public_cas, login_mes
         else:
             message = {
                 "message": {
-                    "cipher": AES_encryptedFunc(session_key, send_msg_byte),
+                    "cipher": send_msg_byte,
                     "sign": RSA_sign(client_key, send_msg_hash_byte),
                     "key": send_msg_key_encrypt,
                 },
@@ -250,7 +250,4 @@ def transmit_encrypt_func(client, session_key, client_key, public_cas, login_mes
     except Exception as e:
         print(f"Error: Failed to serialize message: {e}")
         return None
-
-    print(f" Step2,3,4,5 common method ===> generate AES cipher, digital signature, public key cipher encrypted by "
-          f"RSA =======>>>  {serialized_message}")
     return serialized_message
