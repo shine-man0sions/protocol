@@ -5,6 +5,7 @@ import os
 import json
 import socket
 import time
+import threading
 import queue
 import select
 import socketserver
@@ -149,11 +150,15 @@ class ChatServer(socketserver.BaseRequestHandler):
         return None
 
     # 处理转发数据，A，B，C 向其他设备A，B，C发送消息时，S只负责转发，不进行解析
-    def handle_message(self, conn, result):
-        print(" step 6  S send unchanged message to client ======>>>>>", result)
-        send_source = result.get("optional").get("send_source")
-        send_to = result.get("optional").get("send_to")
+    def handle_message(self, conn, data):
+        result = bytes_to_dict(data.get("message").get("cipher"))
+        content = result.get("content")
+
+        send_source = content["send_source"]
+        send_to = content["send_to"]
         send_to_sock = self.sock_dict.get(send_to)
+        print(" step 6  S send unchanged message to client ======>>>>>", result, send_source, send_to, send_to_sock)
+
         if send_to_sock is not None:
             self.sock_reply_msg_dict[send_to_sock].put(pickle.dumps(result))
         else:
