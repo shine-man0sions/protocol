@@ -42,6 +42,7 @@ class ChatClient:
                  3. use rsa to encrypt the client public key and send to server 
                  4. integrity: use rsa to signature client public key and send to server
     """
+
     def login(self, sock):
         login_message = {
             "action": "login",
@@ -84,6 +85,7 @@ class ChatClient:
                  case 1: Entity authenticated itself to A and B, B 
                  case 2: integrity of data
     """
+
     def handle_send_msg(self, sock, send_to, message, hash):
         public_key = self.all_ca_dict.get("public_key").get(f"{send_to}_CA_public_key")
         new_message = message
@@ -105,20 +107,24 @@ class ChatClient:
             "random": self.key_dict.get(f"{self.client}"),
             "send_to": send_to,
         }
-        text_bo_bytes = pickle.dumps(text)
         print(f"Server S sent message to Client =====>> {text}")
 
-        message = transmit_encrypt_func(text_bo_bytes, self.client_key, public_key, send_msg, optional)
+        message = transmit_encrypt_func(text, self.client_key, public_key, send_msg, optional)
         sock.sendall(message)
-        time.sleep(3)
         return None
 
     def receive_message(self, conn, result):
-        message = result["message"]
         try:
+            if result == "":
+                return
+
+            if isinstance(result, dict) == False:
+                printMsg("==> receive from server ", result)
+                return
             message = result["message"]
             # The private key of the S server is used to decrypt the client using the rsa decryption algorithm
-            plain_text = bytes_to_dict(rsa_decrypt(self.client_key, message["key"]))
+            dec_text = rsa_decrypt(self.client_key, message["key"])
+            plain_text = bytes_to_dict(dec_text)
             print(f"{plain_text}")
             client = plain_text["client"]
 
@@ -134,14 +140,8 @@ class ChatClient:
             compare = RSA_verify(public_key, hash_result, hash_result_s)
 
             if compare:
-                if result == "":
-                    return
-
-                if isinstance(result, dict) == False:
-                    printMsg("==> receive from server ", result)
-                    return
-
-                content = result["content"]
+                cipher = bytes_to_dict(message["cipher"])
+                content = cipher["content"]
                 msg = content["msg"]
                 hash = content["hash"]
                 send_source = content["send_source"]
@@ -158,7 +158,7 @@ class ChatClient:
                         dec_msg = aes_decrypt(self.Kabc, msg)
                     except:
                         dec_msg = msg
-                    printMsg("==> receive from server aes ", msg)
+                    # printMsg("==> receive from server aes ", msg)
                     printMsg("==> receive from server aes_decrypt", dec_msg)
                 if len(self.key_dict) == 3:
                     key_list = self.key_dict.values()
@@ -193,12 +193,15 @@ class ChatClient:
             readable, writable, exceptional = select.select([client_sock, sys.stdin], [], [])
             for sock in readable:
                 if sock is client_sock:
-                    data = sock.recv(1024)
+                    data = sock.recv(1024*4)
                     if not data:
                         print("Disconnected from server")
                         sys.exit()
                     else:
-                        self.receive_message(sock, pickle.loads(data))
+                        try:
+                            self.receive_message(sock, pickle.loads(data))
+                        except Exception as e:
+                            print(e)
                 else:
                     message = sys.stdin.readline().strip()
                     if message == "login":
