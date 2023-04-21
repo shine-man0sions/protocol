@@ -4,10 +4,9 @@ import json
 from mbedtls import pk
 from utils import *
 
-
-# 2. Generate the public key and private key of each entity.
-# Each entity has a public key and a private key.
-# The public key is used to verify the signature of the message.
+# 1. Generate the public key and private key of each entity.
+# 2. Each entity has a public key and a private key.
+# 3. The public key is used to verify the signature of the message.
 
 def generate_key_by_RSA():
     rsa = pk.RSA()
@@ -16,7 +15,7 @@ def generate_key_by_RSA():
     public_key = rsa.export_public_key("PEM")
     key = rsa.export_key("PEM")
     key_sign = RSA_sign(key, public_key)
-    print(f" step1 ===> generate key and signature =======>>>  {public_key}, {key}, {key_sign}")
+    print(f" step1 ===> generate key and signature ===>>>  {public_key}, {key}, {key_sign}")
     return public_key, key, key_sign
 
 

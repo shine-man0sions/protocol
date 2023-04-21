@@ -12,11 +12,9 @@ class ChatServer():
         self.server_socket = None
         self.all_ca_dict = read_json_to_dict(config_file)
         self.all_public_ca_dict = self.all_ca_dict.get("public_key")
-        self.token_dict = {}
         self.sock_dict = {}
         self.clients = {}
         self.sock_reply_msg_dict = {}
-        self.token_dict = {}  # 添加token_dict用于保存Token和过期时间
         self.public_ca_name = "S_CA_public_key"
         self.ca_name = "S_CA_key"
         self.client_public_key = self.all_ca_dict.get(
@@ -76,112 +74,89 @@ class ChatServer():
                 s.close()
                 del message_queues[s]
 
-    # 处理转发数据，A，B，C 向其他设备A，B，C发送消息时，S只负责转发，不进行解析
+    """
+    :param: conn, data
+    :return: none Process forwarded data. When A, B, C sends A message to other devices A, B, C, 
+             S only forwards the message without parsing it
+    """
     def handle_message(self, conn, data):
         result = bytes_to_dict(data.get("message").get("cipher"))
         content = result.get("content")
-
         send_source = content["send_source"]
         send_to = content["send_to"]
         send_to_sock = self.sock_dict.get(send_to)
-        print(" step 6  S send unchanged message to client ======>>>>>", result, send_source, send_to, send_to_sock)
-
         if send_to_sock is not None:
             send_to_sock.send(pickle.dumps(result))
         else:
             print(f"Error: Failed to find socket for client {send_to}")
-        print(
-            f" step 6.1 S transfer unchanged message from {send_source} to other Client {send_to_sock}")
+        print(f" Server S send message from {send_source} to other Client {send_to_sock}")
         return None
 
     def handle_client(self, conn, result):
         if isinstance(result, dict) == False:
             conn.sendall(pickle.dumps(result))
             return
-        # 加载数据
+
+        # Server S load data
         optional = result["optional"]
         message = result["message"]
         try:
             if optional is not None:
                 self.handle_message(conn, result)
             else:
-                # 通过rsa解密算法，使用S服务器的私钥解密出client与临时session——key
+                # The private key of the S server is used to decrypt the client using the rsa decryption algorithm
                 plain_text = bytes_to_dict(
                     rsa_decrypt(self.client_key, message["key"]))
                 client = plain_text["client"]
-                # 构造消息数据，用于验证数字签名
-                hash_result = {
-                    "hashKey": double_hash(plain_text),
-                }
+
+                # Construct message data that is used to verify digital signatures
+                hash_result = {"hashKey": double_hash(plain_text)}
                 hash_result_s = message["sign"]
 
-                # 获得客户端的公钥，用来验证数字签名
-                public_key = self.all_ca_dict.get(
-                    "public_key").get(f"{client}_CA_public_key")
+                # Obtain the client's public key, which is used to verify the digital signature
+                public_key = self.all_ca_dict.get("public_key").get(f"{client}_CA_public_key")
 
-                # 验证数字签名，compare 为True为验证成功，False为验证失败
+                # Verify digital signatures. compare True indicates that the verification succeeds,
+                # False indicates that the verification fails
                 compare = RSA_verify(public_key, hash_result, hash_result_s)
 
                 if compare:
-                    # 如果验证成功，则拿session_key AES算法去解密原始消息，获得明文
+
+                    # If the authentication is successful, the original message is decrypted and the plaintext is obtained
                     plain_text_res = bytes_to_dict(message["cipher"])
 
                     # save client info  then Forward to other client
-                    send_source = plain_text_res.get(
-                        "content").get("send_source")
+                    send_source = plain_text_res.get("content").get("send_source")
 
                     self.sock_dict[send_source] = conn
-
                     if plain_text_res["action"] == "login":
                         self.handle_login(conn, plain_text_res["content"])
-                    elif plain_text_res["action"] == "request_ca_public_key":
-                        self.response_public_key(
-                            conn, plain_text_res["content"])
                     else:
                         print("error")
         except Exception as e:
             print(f"Error: Failed to serialize message: {e}")
             return None
 
-    # A， B， C 向S请求其他设备的公钥，S返回响应数据
-    def response_public_key(self, conn, data):
-        public_key_name = data["ca_name"]
-        response_msg = {
-            "reply_action": "response_ca_public_key",
-            "content": {
-                "ca_name": public_key_name,
-                "ca_value": self.all_public_ca_dict.get(public_key_name)
-            }
-        }
-        reply_data = pickle.dumps(response_msg)
-        conn.sendall(reply_data)
-        # self.sock_reply_msg_dict[conn].put(dict_to_bytes(response_msg))
-        # time.sleep(3)
-        return None
-
-    # 处理初次登陆，A，B，S 第一次尝试与S通信的处理
-    # 这里包括了AES 对传输的消息加密
-    # 这里包括了数字签名验证数字的来源
-    # 这里包括了S的公钥对AES的session key 进行加密
+    """
+    :param: conn, data
+    :return: Processing First login, A, B, S first attempt to communicate with S processing
+             This includes RSA encryption of transmitted messages
+             This includes the source of the digital signature verification number
+    """
     def handle_login(self, conn, data):
         ca_name = data["public_ca_name"]
         ca_value = data["public_ca_value"]
         sign_value = data["sign_value"]
         sign_result = RSA_verify(ca_value, ca_value, sign_value)
         if self.all_public_ca_dict.get(ca_name) == ca_value and sign_result == True:
-            token = generate_token()
             expired_timestamp = int(time.time())
-            self.token_dict[token] = expired_timestamp
             reply_dict = {
                 "reply_action": "login_success",
                 "content": {
-                    "token": token,
                     "expired": expired_timestamp,
                     "client": ca_name.split("_")[0]
                 }
             }
-            self.token_dict["token"] = expired_timestamp
-
         else:
             reply_dict = {
                 "reply_action": "login_failed",
@@ -189,8 +164,6 @@ class ChatServer():
             }
         reply_data = pickle.dumps(reply_dict)
         conn.sendall(reply_data)
-        # self.sock_reply_msg_dict[conn].put(reply_data)
-        # time.sleep(3)
         return None
 
 
