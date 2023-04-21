@@ -86,7 +86,6 @@ class ChatClient:
     """
     def handle_send_msg(self, sock, send_to, message, hash):
         public_key = self.all_ca_dict.get("public_key").get(f"{send_to}_CA_public_key")
-
         new_message = message
         if self.Kabc:
             new_message = aes_encrypt(self.Kabc, message)
@@ -115,36 +114,60 @@ class ChatClient:
         return None
 
     def receive_message(self, conn, result):
-        if result == "":
-            return
+        message = result["message"]
+        try:
+            message = result["message"]
+            # The private key of the S server is used to decrypt the client using the rsa decryption algorithm
+            plain_text = bytes_to_dict(rsa_decrypt(self.client_key, message["key"]))
+            print(f"{plain_text}")
+            client = plain_text["client"]
 
-        if isinstance(result, dict) == False:
-            printMsg("==> receive from server ", result)
-            return
+            # Construct message data that is used to verify digital signatures
+            hash_result = {"hashKey": double_hash(plain_text)}
+            hash_result_s = message["sign"]
 
-        content = result["content"]
-        msg = content["msg"]
-        hash = content["hash"]
-        send_source = content["send_source"]
-        if hash:
-            if "===" in hash:
-                self.key_dict_all[send_source] = hash
-            else:
-                self.key_dict[send_source] = hash
-                new_msg = hash + "===" + send_source
-                self.handle_send_msg(conn, send_source, "", new_msg)
-                printMsg("==> self.key_dict ", self.key_dict)
-        else:
-            try:
-                dec_msg = aes_decrypt(self.Kabc, msg)
-            except:
-                dec_msg = msg
-            printMsg("==> receive from server aes ", msg)
-            printMsg("==> receive from server aes_decrypt", dec_msg)
-        if len(self.key_dict) == 3:
-            key_list = self.key_dict.values()
-            self.Kabc = bytes_to_base64(combine_hash_values(list(key_list)))[:32]
-            printMsg("===>self.Kabc", self.Kabc)
+            # Obtain the client's public key, which is used to verify the digital signature
+            public_key = self.all_ca_dict.get("public_key").get(f"{client}_CA_public_key")
+
+            # Verify digital signatures. compare True indicates that the verification succeeds,
+            # False indicates that the verification fails
+            compare = RSA_verify(public_key, hash_result, hash_result_s)
+
+            if compare:
+                if result == "":
+                    return
+
+                if isinstance(result, dict) == False:
+                    printMsg("==> receive from server ", result)
+                    return
+
+                content = result["content"]
+                msg = content["msg"]
+                hash = content["hash"]
+                send_source = content["send_source"]
+                if hash:
+                    if "===" in hash:
+                        self.key_dict_all[send_source] = hash
+                    else:
+                        self.key_dict[send_source] = hash
+                        new_msg = hash + "===" + send_source
+                        self.handle_send_msg(conn, send_source, "", new_msg)
+                        printMsg("==> self.key_dict ", self.key_dict)
+                else:
+                    try:
+                        dec_msg = aes_decrypt(self.Kabc, msg)
+                    except:
+                        dec_msg = msg
+                    printMsg("==> receive from server aes ", msg)
+                    printMsg("==> receive from server aes_decrypt", dec_msg)
+                if len(self.key_dict) == 3:
+                    key_list = self.key_dict.values()
+                    self.Kabc = bytes_to_base64(combine_hash_values(list(key_list)))[:32]
+                    printMsg("===>self.Kabc", self.Kabc)
+
+        except Exception as e:
+            print(f"Error: Failed to serialize message: {e}")
+        return None
 
     def start_client(self):
         print("====" * 10)

@@ -86,13 +86,14 @@ class ChatServer():
         send_to = content["send_to"]
         send_to_sock = self.sock_dict.get(send_to)
         if send_to_sock is not None:
-            send_to_sock.send(pickle.dumps(result))
+            send_to_sock.send(pickle.dumps(data))
         else:
             print(f"Error: Failed to find socket for client {send_to}")
         print(f" Server S send message from {send_source} to other Client {send_to_sock}")
         return None
 
     def handle_client(self, conn, result):
+        print(f"====>{result}")
         if isinstance(result, dict) == False:
             conn.sendall(pickle.dumps(result))
             return
@@ -105,8 +106,7 @@ class ChatServer():
                 self.handle_message(conn, result)
             else:
                 # The private key of the S server is used to decrypt the client using the rsa decryption algorithm
-                plain_text = bytes_to_dict(
-                    rsa_decrypt(self.client_key, message["key"]))
+                plain_text = bytes_to_dict(rsa_decrypt(self.client_key, message["key"]))
                 client = plain_text["client"]
 
                 # Construct message data that is used to verify digital signatures
