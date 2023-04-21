@@ -5,7 +5,7 @@ import random
 import base64
 import hashlib
 import pickle
-import socket
+import datetime
 from mbedtls import pk
 from Crypto.Cipher import AES
 from argparse import ArgumentParser
@@ -251,3 +251,11 @@ def transmit_encrypt_func(text, client_key, public_cas, login_message, optional_
         print(f"Error: Failed to serialize message: {e}")
         return None
     return serialized_message
+
+
+def printMsg(msg, data):
+    now = datetime.datetime.now()
+    # 格式化输出日期时间字符串
+    now_str = now.strftime("%Y-%m-%d %H:%M:%S")
+    print("==>" + now_str + " " + msg)
+    print(data)

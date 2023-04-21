@@ -75,15 +75,16 @@ class ChatClient:
         time.sleep(3)
 
         # Receive server response data, if login success, print response message, if failure, print failure message reminder
-        # login_res = (sock.recv(RECV_LEN))
-        # login_res_dict = bytes_to_dict(login_res)
-        # reply_action = login_res_dict.get("reply_action")
-        # if reply_action == "login_success":
-        #     self.token = login_res_dict.get("content")
-        #     print(
-        #         f"step 1 {self.client} can connect to S => {login_res_dict.get('reply_action')}")
-        # else:
-        #     print_info(login_res_dict.get("content"))
+        login_res_dict = pickle.loads(sock.recv(RECV_LEN))
+        printMsg("==>receive from server ", login_res_dict)
+
+        reply_action = login_res_dict.get("reply_action")
+        if reply_action == "login_success":
+            self.token = login_res_dict.get("content")
+            print(
+                f"step 1 {self.client} can connect to S => {login_res_dict.get('reply_action')}")
+        else:
+            print_info(login_res_dict.get("content"))
         return None
 
     # Request other public keys from the server, and during the request, use your own temporary session to encrypt the whole information
@@ -110,6 +111,8 @@ class ChatClient:
         # 处理向S请求返回的数据
         message_res = sock.recv(RECV_LEN)
         msg_res_dict = pickle.loads(message_res)
+        printMsg("==>receive from server ", msg_res_dict)
+
         print(f"step 2=====>  get public key from S{msg_res_dict.get('content').get('ca_value')}")
         if msg_res_dict.get("reply_action") == "response_ca_public_key":
             return msg_res_dict.get("content")
@@ -161,6 +164,8 @@ class ChatClient:
             "challenge": challenge
         }
         text_bo_bytes = pickle.dumps(text)
+        printMsg("==>receive from server ", text_bo_bytes)
+
         print(f"step3 send challenge to other Client =====>> {text}")
         # 4. in this part include authentication between A and B, B and C, A and C, and integrity of them
         # using to transmit encrypt challenge
@@ -179,14 +184,14 @@ class ChatClient:
 
         # 获取当前日期时间
         now = datetime.datetime.now()
+        # 格式化输出日期时间字符串
+        now_str = now.strftime("%Y-%m-%d %H:%M:%S")
         cmd = """The commands are:
 	login        获取登陆凭证
 	publickey    获取publickey
 	send_to      发送给其他客户端 send_to CLIENT_NAME msg\n"""
         print(cmd)
 
-        # 格式化输出日期时间字符串
-        now_str = now.strftime("%Y-%m-%d %H:%M:%S")
         while True:
             readable, writable, exceptional = select.select([client_sock, sys.stdin], [], [])
             for sock in readable:
@@ -210,7 +215,3 @@ class ChatClient:
                         self.handle_send_msg(client_sock, cli_name, msg)
                     else:
                         client_sock.send(message.encode('utf-8'))
-
-# if __name__ == '__main__':
-#     cli = ChatClient(host="127.0.0.1", port=5006, client="A")
-#     cli.start_client()
