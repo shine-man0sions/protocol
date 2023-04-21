@@ -23,6 +23,7 @@ class ChatServer(socketserver.BaseRequestHandler):
         self.all_public_ca_dict = self.all_ca_dict.get("public_key")
         self.token_dict = {}
         self.sock_dict = {}
+        self.clients = {}
         self.sock_reply_msg_dict = {}
         self.token_dict = {}  # 添加token_dict用于保存Token和过期时间
         self.public_ca_name = "S_CA_public_key"
@@ -159,6 +160,7 @@ class ChatServer(socketserver.BaseRequestHandler):
         send_to_sock = self.sock_dict.get(send_to)
         print(" step 6  S send unchanged message to client ======>>>>>", result, send_source, send_to, send_to_sock)
 
+
         if send_to_sock is not None:
             self.sock_reply_msg_dict[send_to_sock].put(pickle.dumps(result))
         else:
@@ -192,6 +194,9 @@ class ChatServer(socketserver.BaseRequestHandler):
                         conn, addr = server.accept()
 
                         print("client Connected from ", addr)
+                        client_address_str = "{}:{}".format(addr[0], addr[1])
+
+                        self.clients[client_address_str] = conn
                         if conn not in inputs:
                             inputs.append(conn)
                         self.sock_reply_msg_dict[conn] = queue.Queue()
@@ -210,8 +215,14 @@ class ChatServer(socketserver.BaseRequestHandler):
                         data_to_client = msg_queue.get()
                         # Returns data to the client
                         w.sendall(data_to_client)
-                        time.sleep(2)
-
+                        # time.sleep(2)
+                for s in exceptional:
+                    print('Handling exception for {}'.format(s.getpeername()))
+                    inputs.remove(s)
+                    if s in outputs:
+                        outputs.remove(s)
+                    s.close()
+                    del self.sock_reply_msg_dict[conn]
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
