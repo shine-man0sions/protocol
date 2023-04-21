@@ -1,4 +1,4 @@
-from client_new import ChatClient
+from client import ChatClient
 
 import socket
 
