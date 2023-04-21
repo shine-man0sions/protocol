@@ -48,6 +48,7 @@ class ChatServer():
                     if data:
                         msg = pickle.loads(data)
                         print('Received data from {}:{}'.format(*s.getpeername()))
+                        printMsg("receive from client <==", msg)
                         message_queues[s].put(msg)
                         if s not in outputs:
                             outputs.append(s)
@@ -66,7 +67,6 @@ class ChatServer():
                     outputs.remove(s)
                 else:
                     self.handle_client(s, next_msg)
-
 
             for s in exceptions:
                 print('Handling exception for {}'.format(s.getpeername()))
@@ -95,7 +95,9 @@ class ChatServer():
         return None
 
     def handle_client(self, conn, result):
-
+        if isinstance(result, dict) == False:
+            conn.sendall(pickle.dumps(result))
+            return
         # 加载数据
         optional = result["optional"]
         message = result["message"]

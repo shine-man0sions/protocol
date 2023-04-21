@@ -133,6 +133,23 @@ class ChatClient:
         session_key = long_to_bytes(s)
         return session_key
 
+    def exchange_message(self, sock, send_to1):
+
+        # 获取随机数NA，NB，NC，一会转发给其他客户端
+        key_random = self.key_dict.get(self.client)
+        self.handle_send_msg(sock, send_to1, key_random)
+
+        # else:
+        #     result = self.handle_recv_msg(sock)
+        #     self.key_dict[source_id] = result.get("content").get("msg")
+        #     print(f"step5 =====>>>> {result}")
+        #     if len(self.key_dict) == 3:
+        #         key_list = self.key_dict.values()
+        #
+        #         self.Kabc = combine_hash_values(list(key_list))
+
+        return None
+
     # 处理客户端发送给其他客户端的信息
     def handle_send_msg(self, sock, send_to, message):
         public_key = self.request_for_other_public_key(sock, send_to)[
@@ -164,7 +181,7 @@ class ChatClient:
             "challenge": challenge
         }
         text_bo_bytes = pickle.dumps(text)
-        printMsg("==>receive from server ", text_bo_bytes)
+        printMsg("==>send to server ", text_bo_bytes)
 
         print(f"step3 send challenge to other Client =====>> {text}")
         # 4. in this part include authentication between A and B, B and C, A and C, and integrity of them
@@ -189,6 +206,7 @@ class ChatClient:
         cmd = """The commands are:
 	login        获取登陆凭证
 	publickey    获取publickey
+	exchange    发送给其他客户端 exchange CLIENT_NAME
 	send_to      发送给其他客户端 send_to CLIENT_NAME msg\n"""
         print(cmd)
 
@@ -210,8 +228,11 @@ class ChatClient:
                         self.request_for_other_public_key(client_sock, "B")
                     elif message == "login":
                         self.login(client_sock)
+                    elif "exchange" in message:
+                        _, cli_name = message.split(" ")
+                        self.exchange_message(client_sock, cli_name)
                     elif "send_to" in message:
                         _, cli_name, msg = message.split(" ")
                         self.handle_send_msg(client_sock, cli_name, msg)
                     else:
-                        client_sock.send(message.encode('utf-8'))
+                        client_sock.send(pickle.dumps(message))
