@@ -7,10 +7,11 @@ import hashlib
 import pickle
 import datetime
 from mbedtls import pk
-from Crypto.Cipher import AES
 from argparse import ArgumentParser
 from Crypto.Random import get_random_bytes
-
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad, unpad
+from base64 import b64encode, b64decode
 RECV_LEN = 4 * 1024
 
 # 定义token的过期时间
@@ -259,3 +260,47 @@ def printMsg(msg, data):
     now_str = now.strftime("%Y-%m-%d %H:%M:%S")
     print("==>" + now_str + " " + msg)
     print(data)
+
+
+
+def aes_encrypt(key: str, data: str) -> str:
+    """
+    AES 加密方法
+    :param key: 密钥，必须为 16、24、32 字节长度的字符串
+    :param data: 待加密的数据，必须为字符串类型
+    :return: 加密后的字符串，base64 编码
+    """
+    key = key.encode('utf-8')
+    data = data.encode('utf-8')
+
+    # 创建 AES 加密器
+    cipher = AES.new(key, AES.MODE_CBC)
+
+    # 加密数据并进行填充
+    encrypted_data = cipher.encrypt(pad(data, AES.block_size))
+
+    # 将加密后的数据和 iv 合并，转换为 base64 编码
+    return b64encode(cipher.iv + encrypted_data).decode('utf-8')
+
+
+def aes_decrypt(key: str, encrypted_data: str) -> str:
+    """
+    AES 解密方法
+    :param key: 密钥，必须为 16、24、32 字节长度的字符串
+    :param encrypted_data: 待解密的数据，必须为经过 base64 编码的字符串类型
+    :return: 解密后的字符串
+    """
+    key = key.encode('utf-8')
+    encrypted_data = b64decode(encrypted_data)
+
+    # 从密文中分离出 iv 和加密后的数据
+    iv = encrypted_data[:AES.block_size]
+    data = encrypted_data[AES.block_size:]
+
+    # 创建 AES 解密器
+    cipher = AES.new(key, AES.MODE_CBC, iv)
+
+    # 解密数据并进行去填充
+    decrypted_data = unpad(cipher.decrypt(data), AES.block_size)
+
+    return decrypted_data.decode('utf-8')

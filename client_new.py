@@ -30,6 +30,8 @@ class ChatClient:
         self.key_dict = {
             self.client: generate_random_hash256()
         }
+        self.key_dict_all = {
+        }
         self.key_dict_temporary = {
             self.client: generate_random_hash256()[:32]
         }
@@ -72,11 +74,11 @@ class ChatClient:
             text, self.client_key, self.public_cas, login_message)
 
         sock.sendall(message)
-        time.sleep(3)
+        # time.sleep(3)
 
         # Receive server response data, if login success, print response message, if failure, print failure message reminder
         login_res_dict = pickle.loads(sock.recv(RECV_LEN))
-        printMsg("==>receive from server ", login_res_dict)
+        # printMsg("==>receive from server ", login_res_dict)
 
         reply_action = login_res_dict.get("reply_action")
         if reply_action == "login_success":
@@ -111,7 +113,7 @@ class ChatClient:
         # 处理向S请求返回的数据
         message_res = sock.recv(RECV_LEN)
         msg_res_dict = pickle.loads(message_res)
-        printMsg("==>receive from server ", msg_res_dict)
+        # printMsg("==>receive from server ", msg_res_dict)
 
         print(f"step 2=====>  get public key from S{msg_res_dict.get('content').get('ca_value')}")
         if msg_res_dict.get("reply_action") == "response_ca_public_key":
@@ -137,21 +139,12 @@ class ChatClient:
 
         # 获取随机数NA，NB，NC，一会转发给其他客户端
         key_random = self.key_dict.get(self.client)
-        self.handle_send_msg(sock, send_to1, key_random)
-
-        # else:
-        #     result = self.handle_recv_msg(sock)
-        #     self.key_dict[source_id] = result.get("content").get("msg")
-        #     print(f"step5 =====>>>> {result}")
-        #     if len(self.key_dict) == 3:
-        #         key_list = self.key_dict.values()
-        #
-        #         self.Kabc = combine_hash_values(list(key_list))
+        self.handle_send_msg(sock, send_to1, "", key_random)
 
         return None
 
     # 处理客户端发送给其他客户端的信息
-    def handle_send_msg(self, sock, send_to, message):
+    def handle_send_msg(self, sock, send_to, message, hash):
         public_key = self.request_for_other_public_key(sock, send_to)[
             "ca_value"]
 
@@ -162,18 +155,26 @@ class ChatClient:
         key = self.generate_session_key(dict_to_bytes(self.client_public_key), dict_to_bytes(public_key))
         # Generate a response to the challenge
         response = hmac.new(key, challenge, hashlib.sha256).digest()
+
+        new_message = message
+        if self.Kabc:
+            new_message = aes_encrypt(self.Kabc, message)
+
         send_msg = {
             "action": "change_message",
             "content": {
                 "send_source": self.client,
                 "send_to": send_to,
-                "msg": message
+                "msg": new_message,
+                "hash": hash,
+
             }
         }
+
         optional = {
             "send_source": self.client,
             "send_to": send_to,
-            "msg": message
+
         }
         text = {
             "client": self.client,
@@ -181,7 +182,7 @@ class ChatClient:
             "challenge": challenge
         }
         text_bo_bytes = pickle.dumps(text)
-        printMsg("==>send to server ", text_bo_bytes)
+        # printMsg("==>send to server ", text_bo_bytes)
 
         print(f"step3 send challenge to other Client =====>> {text}")
         # 4. in this part include authentication between A and B, B and C, A and C, and integrity of them
@@ -191,6 +192,41 @@ class ChatClient:
         sock.sendall(message)
         time.sleep(3)
         return None
+
+    def receive_message(self, conn, result):
+        if result == "":
+            return
+
+        if isinstance(result, dict) == False:
+            printMsg("==> receive from server ", result)
+            return
+
+        # 加载数据
+        content = result["content"]
+        msg = content["msg"]
+        hash = content["hash"]
+        send_source = content["send_source"]
+        if hash:
+            if "===" in hash:
+                self.key_dict_all[send_source] = hash
+            else:
+                self.key_dict[send_source] = hash
+                new_msg = hash + "===" + send_source
+                self.handle_send_msg(conn, send_source, "", new_msg)
+                printMsg("==> self.key_dict ", self.key_dict)
+        else:
+            try:
+                dec_msg = aes_decrypt(self.Kabc, msg)
+            except:
+                dec_msg = msg
+            printMsg("==> receive from server aes ", msg)
+            printMsg("==> receive from server  aes_decrypt", dec_msg)
+        if len(self.key_dict) == 3:
+            key_list = self.key_dict.values()
+            self.Kabc = bytes_to_base64(combine_hash_values(list(key_list)))[:32]
+            # printMsg("===>len(self.key_dict) == 3", self.key_dict)
+            # printMsg("===>len(self.key_dict_all) == 3", self.key_dict_all)
+            printMsg("===>self.Kabc", self.Kabc)
 
     def start_client(self):
         print("====" * 10)
@@ -204,10 +240,10 @@ class ChatClient:
         # 格式化输出日期时间字符串
         now_str = now.strftime("%Y-%m-%d %H:%M:%S")
         cmd = """The commands are:
-	login        获取登陆凭证
-	publickey    获取publickey
-	exchange    发送给其他客户端 exchange CLIENT_NAME
-	send_to      发送给其他客户端 send_to CLIENT_NAME msg\n"""
+        login        获取登陆凭证
+        publickey    获取publickey
+        exchange    发送给其他客户端 exchange CLIENT_NAME
+        send_to      发送给其他客户端 send_to CLIENT_NAME msg\n"""
         print(cmd)
 
         while True:
@@ -219,9 +255,8 @@ class ChatClient:
                         print("Disconnected from server")
                         sys.exit()
                     else:
+                        self.receive_message(sock, pickle.loads(data))
 
-                        print("==> reply from server " + now_str)
-                        print(pickle.loads(data))
                 else:
                     message = sys.stdin.readline().strip()
                     if message == "publickey":
@@ -233,6 +268,6 @@ class ChatClient:
                         self.exchange_message(client_sock, cli_name)
                     elif "send_to" in message:
                         _, cli_name, msg = message.split(" ")
-                        self.handle_send_msg(client_sock, cli_name, msg)
+                        self.handle_send_msg(client_sock, cli_name, msg, "")
                     else:
                         client_sock.send(pickle.dumps(message))
